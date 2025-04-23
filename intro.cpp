@@ -1,46 +1,37 @@
 #include "intro.h"
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_image.h>
 #include <iostream>
 
 using namespace std;
 
-Intro::Intro(SDL_Renderer* renderer) : renderer(renderer), isPlayScreen(false), mouseX(0), mouseY(0) {
-    startTexture = IMG_LoadTexture(renderer, "background 1.1.png");
-    playTexture = IMG_LoadTexture(renderer, "background 1.2.png");
-    pointerTexture = IMG_LoadTexture(renderer, "pointer.png");
-    if (!startTexture || !playTexture || !pointerTexture) {
-        cerr << "Failed to load intro textures! IMG_Error: " << IMG_GetError() << endl;
+Intro::Intro(SDL_Renderer* renderer) : renderer(renderer), gameStarted(false) {
+    introTexture = IMG_LoadTexture(renderer, "background 1.1.png"); // Sửa tên
+    if (!introTexture) {
+        cerr << "Failed to load background 1.1.png: " << IMG_GetError() << endl;
     }
-    startButtonRect = { 350, 400, 100, 50 };
 }
 
 Intro::~Intro() {
-    SDL_DestroyTexture(startTexture);
-    SDL_DestroyTexture(playTexture);
-    SDL_DestroyTexture(pointerTexture);
+    SDL_DestroyTexture(introTexture);
 }
 
-bool Intro::handleEvents(SDL_Event& e) {
-    if (e.type == SDL_MOUSEMOTION || e.type == SDL_MOUSEBUTTONDOWN) {
-        SDL_GetMouseState(&mouseX, &mouseY);
-        bool inside = (mouseX >= startButtonRect.x && mouseX <= startButtonRect.x + startButtonRect.w &&
-                       mouseY >= startButtonRect.y && mouseY <= startButtonRect.y + startButtonRect.h);
-
-        if (inside) {
-            isPlayScreen = true; // Switch to "background 1.2.png" immediately
-        }
-        if (inside && e.type == SDL_MOUSEBUTTONDOWN) {
-            return true; // Start the game
-        }
+void Intro::handleEvents(SDL_Event& e) {
+    if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_SPACE) {
+        gameStarted = true;
     }
-    return false;
+}
+
+bool Intro::isGameStarted() const {
+    return gameStarted;
 }
 
 void Intro::render() {
-    if (isPlayScreen) {
-        SDL_RenderCopy(renderer, playTexture, NULL, NULL);
+    SDL_RenderClear(renderer);
+    if (introTexture) {
+        SDL_RenderCopy(renderer, introTexture, NULL, NULL);
     } else {
-        SDL_RenderCopy(renderer, startTexture, NULL, NULL);
+        cerr << "introTexture is nullptr, cannot render!" << endl;
     }
-    SDL_Rect pointerRect = { mouseX, mouseY, 20, 20 };
-    SDL_RenderCopy(renderer, pointerTexture, NULL, &pointerRect);
+    SDL_RenderPresent(renderer);
 }

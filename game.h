@@ -6,14 +6,7 @@
 #include <SDL2/SDL_ttf.h>
 #include <vector>
 #include <string>
-
-struct Gold {
-    SDL_Rect rect;
-    bool isBomb;
-    bool isPickedUp;
-    bool isMysteryBox;
-    int value;
-};
+#include "gold.h"
 
 class Game {
 private:
@@ -24,7 +17,7 @@ private:
     SDL_Texture* bombTexture;
     SDL_Texture* mysteryBoxTexture;
     SDL_Texture* explosionTexture;
-    SDL_Texture* backgroundTexture; // "background 2.png"
+    SDL_Texture* backgroundTexture;
     TTF_Font* font;
     std::vector<Gold> golds;
     int score;
@@ -36,6 +29,14 @@ private:
     int roundScores[3];
     bool gameOver;
     int timeLeft;
+    int maxTime;
+    // Thêm các biến để quản lý texture cho score và time
+    SDL_Texture* scoreTexture;
+    SDL_Texture* timeTexture;
+    SDL_Rect scoreRect;
+    SDL_Rect timeRect;
+    int lastScore; // Giá trị score trước đó
+    int lastTimeLeft; // Giá trị timeLeft trước đó
 
 public:
     Game();
@@ -51,7 +52,19 @@ public:
     SDL_Renderer* getRenderer() const { return renderer; }
     int getCurrentRound() const { return currentRound; }
     int getTimeLeft() const { return timeLeft; }
-    void setTimeLeft(int time) { timeLeft = time; }
+    void setTimeLeft(int time) {
+        timeLeft = time;
+        if (timeLeft > maxTime) timeLeft = maxTime;
+    }
+    bool allItemsPickedUp() const {
+        for (const Gold& gold : golds) {
+            if (!gold.isPickedUp) return false;
+        }
+        return true;
+    }
+    // Thêm hàm để cập nhật texture
+    void updateScoreTexture();
+    void updateTimeTexture();
 };
 
 #endif

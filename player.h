@@ -4,9 +4,7 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
 #include <vector>
-
-struct Gold; // Forward declaration for Gold struct
-
+#include "gold.h"
 
 class Player {
 private:
