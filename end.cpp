@@ -1,38 +1,46 @@
 #include "end.h"
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_image.h>
+#include <iostream>
 
 using namespace std;
 
-// End::End(SDL_Renderer* renderer, TTF_Font* font, bool won) : renderer(renderer), font(font), won(won) {
-//     endTexture = IMG_LoadTexture(renderer, "background 3.png");
-// }
-
-End::End(SDL_Renderer* renderer, TTF_Font* font, bool won) : renderer(renderer), font(font), won(won) {
-    SDL_Surface* surface = IMG_Load("background 3.png"); // Tải hình ảnh
-    if (surface) {
-        endTexture = SDL_CreateTextureFromSurface(renderer, surface); // Chuyển đổi surface thành texture
-        SDL_FreeSurface(surface); // Giải phóng surface sau khi sử dụng
-    } else {
-        endTexture = nullptr; // Xử lý nếu không tải được hình ảnh
-    }
+End::End(SDL_Renderer* renderer, TTF_Font* font, bool win) : renderer(renderer), font(font), win(win) {
 }
 
 End::~End() {
-    SDL_DestroyTexture(endTexture);
 }
 
 void End::render() {
     SDL_RenderClear(renderer);
-    SDL_RenderCopy(renderer, endTexture, NULL, NULL);
 
-    string message = won ? "You Win!" : "You Lose!";
-    SDL_Color textColor = { 255, 255, 255 };
-    SDL_Surface* textSurface = TTF_RenderText_Solid(font, message.c_str(), textColor);
+    if (!font) {
+        cerr << "Font is nullptr, cannot render text!" << endl;
+        SDL_RenderPresent(renderer);
+        return;
+    }
+
+    const char* message = win ? "YOU WIN!" : "YOU LOSE!";
+    SDL_Surface* textSurface = TTF_RenderText_Solid(font, message, { 255, 255, 255 });
+    if (!textSurface) {
+        cerr << "TTF_RenderText_Solid failed: " << TTF_GetError() << endl;
+        SDL_RenderPresent(renderer);
+        return;
+    }
+
     SDL_Texture* textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
-    SDL_Rect renderQuad = { 350, 300, textSurface->w, textSurface->h };
-    SDL_RenderCopy(renderer, textTexture, NULL, &renderQuad);
+    if (!textTexture) {
+        cerr << "SDL_CreateTextureFromSurface failed: " << SDL_GetError() << endl;
+        SDL_FreeSurface(textSurface);
+        SDL_RenderPresent(renderer);
+        return;
+    }
+
+    SDL_Rect textRect = { (800 - textSurface->w) / 2, (600 - textSurface->h) / 2, textSurface->w, textSurface->h }; // Chính giữa
+    SDL_RenderCopy(renderer, textTexture, NULL, &textRect);
+
     SDL_FreeSurface(textSurface);
     SDL_DestroyTexture(textTexture);
 
     SDL_RenderPresent(renderer);
-    SDL_Delay(2000);
 }
