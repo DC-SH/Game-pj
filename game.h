@@ -3,8 +3,10 @@
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
+#include <SDL2/SDL_ttf.h>
 #include <string>
 #include "Character.h"
+#include "Items.h"
 
 class Game {
 public:
@@ -14,7 +16,7 @@ public:
     void run();
 
 private:
-    enum GameState { MENU, PLAYING, WIN, LOSE }; // Trạng thái game
+    enum GameState { MENU, PLAYING };
     void loadResources();
     void processEvents();
     void update(int mouseX, int mouseY);
@@ -23,17 +25,24 @@ private:
 
     SDL_Window* window;
     SDL_Renderer* renderer;
-    SDL_Texture* bgTexture; // back1.png (menu)
-    SDL_Texture* bgGameTexture; // back2.png (gameplay)
-    SDL_Texture* buttonStartTexture; // b1.png
-    SDL_Texture* buttonPlayTexture; // b2.png
+    SDL_Texture* bgTexture;
+    SDL_Texture* bgGameTexture;
+    SDL_Texture* buttonStartTexture;
+    SDL_Texture* buttonPlayTexture;
     SDL_Rect buttonRect;
-    bool isButtonPlay; // True khi chuột hover (hiển thị b2.png)
+    bool isButtonPlay;
     bool isRunning;
-    GameState currentState; // Trạng thái hiện tại
-    Character* character; // Đối tượng nhân vật
-    int characterDx; // Thay đổi vị trí x của nhân vật (1: phải, -1: trái, 0: dừng)
-    bool isCasting; // Trạng thái nhấn Space (đang cast cần câu hay không)
+    bool isPaused;
+    GameState currentState;
+    Character* character;
+    Items* items;
+    int characterDx;
+    bool isCasting;
+    int score;
+    TTF_Font* font;
+    SDL_Texture* scoreTexture;
+    SDL_Rect scoreRect;
+    void updateScoreTexture();
 };
 
 #endif // GAME_H
