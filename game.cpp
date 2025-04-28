@@ -1,21 +1,14 @@
 #include "Game.h"
 #include <iostream>
+#include <random>
+#include <cmath>
 
 Game::Game()
-    : window(nullptr)
-    , renderer(nullptr)
-    , bgTexture(nullptr)
-    , bgGameTexture(nullptr)
-    , buttonStartTexture(nullptr)
-    , buttonPlayTexture(nullptr)
-    , isButtonPlay(false)
-    , isRunning(false)
-    , isPaused(false)
-    , currentState(MENU)
-    , character(nullptr)
-    , characterDx(0)
-    , isCasting(false) {
-    buttonRect = { (1200 - 200) / 2, (600 - 100) / 2, 200, 100 }; // Căn giữa
+    : window(nullptr), renderer(nullptr), bgTexture(nullptr), bgGameTexture(nullptr),
+      buttonStartTexture(nullptr), buttonPlayTexture(nullptr), isButtonPlay(false),
+      isRunning(false), isPaused(false), currentState(MENU), character(nullptr),
+      characterDx(0), isCasting(false) {
+    buttonRect = { (1200 - 200) / 2, (600 - 100) / 2, 200, 100 };
 }
 
 Game::~Game() {
@@ -56,7 +49,6 @@ bool Game::init() {
         return false;
     }
 
-    // Khởi tạo nhân vật và tải texture chill.png
     character = new Character(renderer);
     if (!character->loadTexture("chill.png", renderer)) {
         std::cerr << "Lỗi: Không tìm thấy file chill.png hoặc file không đúng định dạng!" << std::endl;
@@ -69,12 +61,12 @@ bool Game::init() {
     }
 
     loadResources();
+    generateItems();
     isRunning = true;
     return true;
 }
 
 void Game::loadResources() {
-    // Tải background 1 (menu)
     SDL_Surface* surface = IMG_Load("back1.png");
     if (!surface) {
         std::cerr << "Không thể tải back1.png: " << IMG_GetError() << std::endl;
@@ -89,7 +81,6 @@ void Game::loadResources() {
         return;
     }
 
-    // Tải background 2 (gameplay)
     surface = IMG_Load("back2.png");
     if (!surface) {
         std::cerr << "Không thể tải back2.png: " << IMG_GetError() << std::endl;
@@ -104,7 +95,6 @@ void Game::loadResources() {
         return;
     }
 
-    // Tải nút start (b1.png)
     surface = IMG_Load("b1.png");
     if (!surface) {
         std::cerr << "Không thể tải b1.png: " << IMG_GetError() << std::endl;
@@ -119,7 +109,6 @@ void Game::loadResources() {
         return;
     }
 
-    // Tải nút play (b2.png)
     surface = IMG_Load("b2.png");
     if (!surface) {
         std::cerr << "Không thể tải b2.png: " << IMG_GetError() << std::endl;
@@ -135,6 +124,66 @@ void Game::loadResources() {
     }
 }
 
+void Game::generateItems() {
+    for (auto item : items) {
+        delete item;
+    }
+    items.clear();
+
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> xDist(75, 1125);
+    std::uniform_int_distribution<> yDist(400, 550);
+
+    const int minDistance = 70;
+    std::vector<SDL_Point> positions;
+
+    struct ItemToGenerate {
+        ItemType type;
+        int count;
+        int width;
+    };
+    std::vector<ItemToGenerate> itemsToGenerate = {
+        { BIG_GOLD, 6, 100 },
+        { GOLD, 5, 150 },
+        { MYSTERY_BOX, 2, 40 }
+    };
+
+    for (const auto& itemGen : itemsToGenerate) {
+        for (int i = 0; i < itemGen.count; ++i) {
+            bool validPosition = false;
+            int x, y;
+            int attempts = 0;
+            const int maxAttempts = 100;
+
+            while (!validPosition && attempts < maxAttempts) {
+                x = xDist(gen);
+                y = yDist(gen);
+                validPosition = true;
+
+                for (const auto& pos : positions) {
+                    double distance = std::sqrt(std::pow(x - pos.x, 2) + std::pow(y - pos.y, 2));
+                    if (distance < minDistance) {
+                        validPosition = false;
+                        break;
+                    }
+                }
+
+                attempts++;
+            }
+
+            if (validPosition) {
+                int offset = itemGen.width / 2;
+                Item* item = new Item(renderer, itemGen.type, x - offset, y - offset);
+                items.push_back(item);
+                positions.push_back({ x, y });
+            } else {
+                std::cerr << "Cảnh báo: Không tìm được vị trí hợp lệ cho vật phẩm sau " << maxAttempts << " lần thử" << std::endl;
+            }
+        }
+    }
+}
+
 void Game::run() {
     while (isRunning) {
         processEvents();
@@ -142,7 +191,7 @@ void Game::run() {
         SDL_GetMouseState(&mouseX, &mouseY);
         update(mouseX, mouseY);
         render();
-        SDL_Delay(1000 / 60); // 60 FPS
+        SDL_Delay(1000 / 60);
     }
 }
 
@@ -158,19 +207,19 @@ void Game::processEvents() {
         } else if (currentState == PLAYING && !isPaused) {
             if (event.type == SDL_KEYDOWN) {
                 switch (event.key.keysym.sym) {
-                    case SDLK_LEFT:  // Mũi tên trái
-                    case SDLK_a:     // Phím A
-                        characterDx = -1; // Di chuyển sang trái
+                    case SDLK_LEFT:
+                    case SDLK_a:
+                        characterDx = -1;
                         break;
-                    case SDLK_RIGHT: // Mũi tên phải
-                    case SDLK_d:     // Phím D
-                        characterDx = 1;  // Di chuyển sang phải
+                    case SDLK_RIGHT:
+                    case SDLK_d:
+                        characterDx = 1;
                         break;
-                    case SDLK_SPACE: // Phím Space
-                        isCasting = true; // Thả dây
+                    case SDLK_SPACE:
+                        isCasting = true;
                         character->castLine(isCasting);
                         break;
-                    case SDLK_r: // Phím R để tạm dừng
+                    case SDLK_r:
                         isPaused = true;
                         break;
                 }
@@ -180,17 +229,17 @@ void Game::processEvents() {
                     case SDLK_a:
                     case SDLK_RIGHT:
                     case SDLK_d:
-                        characterDx = 0; // Dừng di chuyển
+                        characterDx = 0;
                         break;
-                    case SDLK_SPACE: // Thả Space
-                        isCasting = false; // Thu dây
+                    case SDLK_SPACE:
+                        isCasting = false;
                         character->castLine(isCasting);
                         break;
                 }
             }
         } else if (currentState == PLAYING && isPaused) {
             if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_r) {
-                isPaused = false; // Tiếp tục
+                isPaused = false;
             }
         }
     }
@@ -198,15 +247,42 @@ void Game::processEvents() {
 
 void Game::update(int mouseX, int mouseY) {
     if (currentState == MENU) {
-        // Kiểm tra chuột có trong vùng nút không
         if (mouseX >= buttonRect.x && mouseX <= buttonRect.x + buttonRect.w &&
             mouseY >= buttonRect.y && mouseY <= buttonRect.y + buttonRect.h) {
-            isButtonPlay = true; // Hiển thị b2.png
+            isButtonPlay = true;
         } else {
-            isButtonPlay = false; // Hiển thị b1.png
+            isButtonPlay = false;
         }
     } else if (currentState == PLAYING && !isPaused) {
-        character->update(characterDx); // Cập nhật vị trí nhân vật và cần câu
+        character->update(characterDx);
+
+        if (!character->hasCaughtItem() && !character->isItemCaught()) {
+            SDL_Point hookPos = character->getHookPosition();
+            for (auto it = items.begin(); it != items.end();) {
+                SDL_Rect itemRect = (*it)->getRect();
+                ItemType type = (*it)->getType();
+                int itemCenterX = itemRect.x + itemRect.w / 2;
+                int itemCenterY = itemRect.y + itemRect.h / 2;
+                double distance = sqrt(pow(hookPos.x - itemCenterX, 2) + pow(hookPos.y - itemCenterY, 2));
+                if ((type == GOLD || type == BIG_GOLD || type == MYSTERY_BOX) && distance < 17) { // Thay từ 5 thành 17
+                    character->catchItem();
+                    character->setCaughtItem(*it);
+                    it = items.erase(it);
+                    break;
+                } else {
+                    ++it;
+                }
+            }
+        }
+
+        Item* caughtItem = character->getCaughtItem();
+        if (caughtItem) {
+            SDL_Rect itemRect = caughtItem->getRect();
+            if (itemRect.y <= 310) { // Đã thay đổi MOVE_AREA_BOTTOM thành 310 trước đó
+                delete caughtItem;
+                character->setCaughtItem(nullptr);
+            }
+        }
     }
 }
 
@@ -214,17 +290,28 @@ void Game::render() {
     SDL_RenderClear(renderer);
 
     if (currentState == MENU) {
-        SDL_RenderCopy(renderer, bgTexture, nullptr, nullptr); // back1.png
+        SDL_RenderCopy(renderer, bgTexture, nullptr, nullptr);
         SDL_RenderCopy(renderer, isButtonPlay ? buttonPlayTexture : buttonStartTexture, nullptr, &buttonRect);
     } else if (currentState == PLAYING) {
-        SDL_RenderCopy(renderer, bgGameTexture, nullptr, nullptr); // back2.png
-        character->render(renderer); // Vẽ nhân vật, cần câu và dây
+        SDL_RenderCopy(renderer, bgGameTexture, nullptr, nullptr);
+        for (const auto& item : items) {
+            item->render(renderer);
+        }
+        Item* caughtItem = character->getCaughtItem();
+        if (caughtItem) {
+            caughtItem->render(renderer);
+        }
+        character->render(renderer);
     }
 
     SDL_RenderPresent(renderer);
 }
 
 void Game::cleanup() {
+    for (auto item : items) {
+        delete item;
+    }
+    items.clear();
     if (character) {
         delete character;
     }
