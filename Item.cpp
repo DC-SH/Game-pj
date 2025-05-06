@@ -13,6 +13,9 @@ Item::Item(SDL_Renderer* renderer, ItemType type, int x, int y)
         case MYSTERY_BOX:
             rect = { x, y, 40, 40 };
             break;
+        case BOMB:
+            rect = { x, y, 80, 80 }; // Phóng to gấp 2 lần (từ 40x40)
+            break;
         default:
             rect = { x, y, 100, 100 };
             break;
@@ -23,6 +26,7 @@ Item::Item(SDL_Renderer* renderer, ItemType type, int x, int y)
         case BIG_GOLD: filePath = "biggold.png"; break;
         case GOLD: filePath = "minigold.png"; break;
         case MYSTERY_BOX: filePath = "mysbox.png"; break;
+        case BOMB: filePath = "bomb.png"; break;
         default: filePath = "biggold.png"; break;
     }
     if (!loadTexture(filePath, renderer)) {

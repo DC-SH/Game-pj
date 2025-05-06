@@ -73,6 +73,17 @@ void Character::update(int dx) {
     int rodEndX = rod.x + static_cast<int>(rod.h * sin(rad));
     int rodEndY = rod.y + static_cast<int>(rod.h * cos(rad));
 
+    // Điều chỉnh tốc độ kéo dựa trên vật phẩm
+    double pullSpeed = BASE_PULL_SPEED;
+    if (caughtItem) {
+        ItemType type = caughtItem->getType();
+        if (type == BIG_GOLD) {
+            pullSpeed /= 2.5; // Chậm gấp 2.5 lần
+        } else if (type == GOLD) {
+            pullSpeed /= 1.5; // Chậm gấp 1.5 lần
+        }
+    }
+
     if (isLineExtended && !isPullingUp) {
         lineCurrentLength += lineDropSpeed * (1.0 / 60.0);
         hook.x = rodEndX + static_cast<int>((lineCurrentLength - rod.h) * sin(rad));

@@ -33,7 +33,7 @@ private:
     const int MOVE_AREA_LEFT = 0;
     const int MOVE_AREA_RIGHT = 1200;
     const int MOVE_AREA_TOP = 200;
-    const int MOVE_AREA_BOTTOM = 310; // Tăng từ 300 lên 310
+    const int MOVE_AREA_BOTTOM = 310;
     SDL_Point hook;
     bool isLineExtended;
     double lineCurrentLength;
@@ -45,6 +45,7 @@ private:
     bool hasCaughtItemFlag;
     Item* caughtItem;
     bool isCaught;
+    const double BASE_PULL_SPEED = 300.0; // Tốc độ kéo cơ bản
 };
 
 #endif // CHARACTER_H
