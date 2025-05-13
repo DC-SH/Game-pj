@@ -8,10 +8,13 @@ Game::Game()
     : window(nullptr), renderer(nullptr), bgTexture(nullptr), bgGameTexture(nullptr),
       buttonStartTexture(nullptr), buttonPlayTexture(nullptr), isButtonPlay(false),
       isRunning(false), isPaused(false), currentState(MENU), character(nullptr),
-      characterDx(0), isCasting(false), score(0), timeLeft(75.0f), hasWon(false),
-      font(nullptr), showRestartText(true), blinkTimer(0.0f), explosionTexture(nullptr),
-      isExploding(false), explosionFrame(0), explosionTimer(0.0f), explosionPosition({0, 0}) {
-    buttonRect = { (1200 - 200 ) / 2, (600) / 2, 200, 100 };
+      characterDx(0), isCasting(false), score(0), timeLeft(75.0f), aim(0),
+      hasWon(false), font(nullptr), showRestartText(true), blinkTimer(0.0f),
+      explosionTexture(nullptr), isExploding(false), explosionFrame(0), explosionTimer(0.0f),
+      explosionPosition({0, 0}), isRestarting(false), restartTimer(0.0f),
+      winSound(nullptr), loseSound(nullptr), bombSound(nullptr), goldSound(nullptr),
+      spaceClickSound(nullptr), movementSoundChannel(-1) {
+    buttonRect = { (1200 - 200) / 2, (600) / 2, 200, 100 };
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_int_distribution<> aimDist(1550, 1660);
@@ -23,13 +26,20 @@ Game::~Game() {
 }
 
 bool Game::init() {
-    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {
         std::cerr << "Không thể khởi tạo SDL: " << SDL_GetError() << std::endl;
         return false;
     }
 
     if (TTF_Init() < 0) {
         std::cerr << "Không thể khởi tạo SDL_ttf: " << TTF_GetError() << std::endl;
+        SDL_Quit();
+        return false;
+    }
+
+    if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0) {
+        std::cerr << "Không thể khởi tạo SDL_mixer: " << Mix_GetError() << std::endl;
+        TTF_Quit();
         SDL_Quit();
         return false;
     }
@@ -41,6 +51,7 @@ bool Game::init() {
                              SDL_WINDOW_SHOWN);
     if (!window) {
         std::cerr << "Không thể tạo cửa sổ: " << SDL_GetError() << std::endl;
+        Mix_CloseAudio();
         TTF_Quit();
         SDL_Quit();
         return false;
@@ -50,6 +61,7 @@ bool Game::init() {
     if (!renderer) {
         std::cerr << "Không thể tạo renderer: " << SDL_GetError() << std::endl;
         SDL_DestroyWindow(window);
+        Mix_CloseAudio();
         TTF_Quit();
         SDL_Quit();
         return false;
@@ -60,6 +72,7 @@ bool Game::init() {
         std::cerr << "Không thể khởi tạo SDL_image: " << IMG_GetError() << std::endl;
         SDL_DestroyRenderer(renderer);
         SDL_DestroyWindow(window);
+        Mix_CloseAudio();
         TTF_Quit();
         SDL_Quit();
         return false;
@@ -71,40 +84,30 @@ bool Game::init() {
         SDL_DestroyRenderer(renderer);
         SDL_DestroyWindow(window);
         IMG_Quit();
+        Mix_CloseAudio();
         TTF_Quit();
         SDL_Quit();
         return false;
     }
 
     character = new Character(renderer);
-    if (!character->loadTexture("chill.png", renderer)) {
-        std::cerr << "Lỗi: Không tìm thấy file chill.png hoặc file không đúng định dạng!" << std::endl;
-        delete character;
-        character = nullptr;
-        TTF_CloseFont(font);
-        SDL_DestroyRenderer(renderer);
-        SDL_DestroyWindow(window);
-        IMG_Quit();
-        TTF_Quit();
-        SDL_Quit();
-        return false;
-    }
 
-    SDL_Surface* surface = IMG_Load("explosionsprite.png");
+    SDL_Surface* surface = IMG_Load("Explode.png");
     if (!surface) {
-        std::cerr << "Không thể tải explosionsprite.png: " << IMG_GetError() << std::endl;
+        std::cerr << "Không thể tải Explode.png: " << IMG_GetError() << std::endl;
         cleanup();
         return false;
     }
     explosionTexture = SDL_CreateTextureFromSurface(renderer, surface);
     SDL_FreeSurface(surface);
     if (!explosionTexture) {
-        std::cerr << "Không thể tạo texture cho explosionsprite.png: " << IMG_GetError() << std::endl;
+        std::cerr << "Không thể tạo texture cho Explode.png: " << IMG_GetError() << std::endl;
         cleanup();
         return false;
     }
 
     loadResources();
+    loadSounds();
     generateItems();
     isRunning = true;
     return true;
@@ -168,6 +171,29 @@ void Game::loadResources() {
     }
 }
 
+void Game::loadSounds() {
+    winSound = Mix_LoadWAV("Winning sound.mp3");
+    if (!winSound) {
+        std::cerr << "Không thể tải Winning sound.mp3: " << Mix_GetError() << std::endl;
+    }
+    loseSound = Mix_LoadWAV("Losing sound.mp3");
+    if (!loseSound) {
+        std::cerr << "Không thể tải Losing sound.mp3: " << Mix_GetError() << std::endl;
+    }
+    bombSound = Mix_LoadWAV("bomb explode.mp3");
+    if (!bombSound) {
+        std::cerr << "Không thể tải bomb explode.mp3: " << Mix_GetError() << std::endl;
+    }
+    goldSound = Mix_LoadWAV("GOLD OR MYSBOX.mp3");
+    if (!goldSound) {
+        std::cerr << "Không thể tải GOLD OR MYSBOX.mp3: " << Mix_GetError() << std::endl;
+    }
+    spaceClickSound = Mix_LoadWAV("SPACE OR CLICK.mp3");
+    if (!spaceClickSound) {
+        std::cerr << "Không thể tải SPACE OR CLICK.mp3: " << Mix_GetError() << std::endl;
+    }
+}
+
 void Game::generateItems() {
     for (auto item : items) {
         delete item;
@@ -192,7 +218,7 @@ void Game::generateItems() {
         { BIG_GOLD, 6, 100 },
         { GOLD, 5, 150 },
         { MYSTERY_BOX, 2, 40 },
-        { BOMB, bombCountDist(gen), 80 } // Kích thước bom tăng lên 80x80
+        { BOMB, bombCountDist(gen), 80 }
     };
 
     for (const auto& itemGen : itemsToGenerate) {
@@ -248,6 +274,9 @@ void Game::processEvents() {
         } else if (event.type == SDL_MOUSEBUTTONDOWN && currentState == MENU) {
             if (event.button.button == SDL_BUTTON_LEFT && isButtonPlay) {
                 currentState = PLAYING;
+                if (spaceClickSound) {
+                    Mix_PlayChannel(-1, spaceClickSound, 0);
+                }
             }
         } else if (currentState == PLAYING && !isPaused) {
             if (event.type == SDL_KEYDOWN) {
@@ -263,6 +292,9 @@ void Game::processEvents() {
                     case SDLK_SPACE:
                         isCasting = true;
                         character->castLine(isCasting);
+                        if (spaceClickSound) {
+                            Mix_PlayChannel(-1, spaceClickSound, 0);
+                        }
                         break;
                     case SDLK_r:
                         isPaused = true;
@@ -286,25 +318,21 @@ void Game::processEvents() {
             if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_r) {
                 isPaused = false;
             }
-        } else if (currentState == GAME_OVER) {
+        } else if (currentState == GAME_OVER && !isRestarting) {
             if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_SPACE) {
-                score = 0;
-                timeLeft = 75.0f;
-                hasWon = false;
-                currentState = PLAYING;
-                generateItems();
-                character->resetCatch();
-                character->setCaughtItem(nullptr);
-                std::random_device rd;
-                std::mt19937 gen(rd());
-                std::uniform_int_distribution<> aimDist(1550, 1660);
-                aim = aimDist(gen);
+                isRestarting = true;
+                restartTimer = 5.0f;
+                if (spaceClickSound) {
+                    Mix_PlayChannel(-1, spaceClickSound, 0);
+                }
             }
         }
     }
 }
 
 void Game::update(int mouseX, int mouseY) {
+    static bool playedWinLoseSound = false;
+
     if (currentState == MENU) {
         if (mouseX >= buttonRect.x && mouseX <= buttonRect.x + buttonRect.w &&
             mouseY >= buttonRect.y && mouseY <= buttonRect.y + buttonRect.h) {
@@ -315,11 +343,29 @@ void Game::update(int mouseX, int mouseY) {
     } else if (currentState == PLAYING && !isPaused) {
         character->update(characterDx);
 
+        // Handle movement sound
+        if (characterDx != 0 && spaceClickSound && movementSoundChannel == -1) {
+            // Start playing the movement sound in a loop
+            movementSoundChannel = Mix_PlayChannel(-1, spaceClickSound, -1); // -1 for infinite loops
+            if (movementSoundChannel == -1) {
+                std::cerr << "Không thể phát SPACE OR CLICK.mp3 cho di chuyển: " << Mix_GetError() << std::endl;
+            }
+        } else if (characterDx == 0 && movementSoundChannel != -1) {
+            // Stop the movement sound
+            Mix_HaltChannel(movementSoundChannel);
+            movementSoundChannel = -1;
+        }
+
         timeLeft -= 1.0f / 60.0f;
         if (timeLeft <= 0) {
             timeLeft = 0;
             hasWon = score >= aim;
             currentState = GAME_OVER;
+            playedWinLoseSound = false;
+            if (movementSoundChannel != -1) {
+                Mix_HaltChannel(movementSoundChannel);
+                movementSoundChannel = -1;
+            }
         }
 
         if (isExploding) {
@@ -331,6 +377,11 @@ void Game::update(int mouseX, int mouseY) {
                     isExploding = false;
                     hasWon = false;
                     currentState = GAME_OVER;
+                    playedWinLoseSound = false;
+                    if (movementSoundChannel != -1) {
+                        Mix_HaltChannel(movementSoundChannel);
+                        movementSoundChannel = -1;
+                    }
                 }
             }
             return;
@@ -345,17 +396,46 @@ void Game::update(int mouseX, int mouseY) {
                 int itemCenterY = itemRect.y + itemRect.h / 2;
                 double distance = sqrt(pow(hookPos.x - itemCenterX, 2) + pow(hookPos.y - itemCenterY, 2));
                 if (type == BOMB && distance < 17) {
-                    // Lưu vị trí bom để hiển thị hiệu ứng nổ
                     explosionPosition = { itemCenterX, itemCenterY };
                     isExploding = true;
                     explosionFrame = 0;
                     explosionTimer = 0.0f;
                     character->resetCatch();
+                    if (bombSound) {
+                        Mix_PlayChannel(-1, bombSound, 0);
+                    }
                     it = items.erase(it);
                     break;
-                } else if ((type == GOLD || type == BIG_GOLD || type == MYSTERY_BOX) && distance < 17) {
+                } else if (type == MYSTERY_BOX && distance < 17) {
+                    std::random_device rd;
+                    std::mt19937 gen(rd());
+                    std::uniform_real_distribution<> bombChance(0.0, 1.0);
+                    if (bombChance(gen) < 0.3) {
+                        explosionPosition = { itemCenterX, itemCenterY };
+                        isExploding = true;
+                        explosionFrame = 0;
+                        explosionTimer = 0.0f;
+                        character->resetCatch();
+                        if (bombSound) {
+                            Mix_PlayChannel(-1, bombSound, 0);
+                        }
+                        it = items.erase(it);
+                        break;
+                    } else {
+                        character->catchItem();
+                        character->setCaughtItem(*it);
+                        if (goldSound) {
+                            Mix_PlayChannel(-1, goldSound, 0);
+                        }
+                        it = items.erase(it);
+                        break;
+                    }
+                } else if ((type == GOLD || type == BIG_GOLD) && distance < 17) {
                     character->catchItem();
                     character->setCaughtItem(*it);
+                    if (goldSound) {
+                        Mix_PlayChannel(-1, goldSound, 0);
+                    }
                     it = items.erase(it);
                     break;
                 } else {
@@ -384,16 +464,107 @@ void Game::update(int mouseX, int mouseY) {
                 if (score >= aim) {
                     hasWon = true;
                     currentState = GAME_OVER;
+                    playedWinLoseSound = false;
+                    if (movementSoundChannel != -1) {
+                        Mix_HaltChannel(movementSoundChannel);
+                        movementSoundChannel = -1;
+                    }
                 }
             }
         }
     } else if (currentState == GAME_OVER) {
+        if (!playedWinLoseSound) {
+            if (hasWon && winSound) {
+                Mix_PlayChannel(-1, winSound, 0);
+            } else if (!hasWon && loseSound) {
+                Mix_PlayChannel(-1, loseSound, 0);
+            }
+            playedWinLoseSound = true;
+        }
+
+        if (isRestarting) {
+            restartTimer -= 1.0f / 60.0f;
+            if (restartTimer <= 0.0f) {
+                score = 0;
+                timeLeft = 75.0f;
+                hasWon = false;
+                currentState = PLAYING;
+                isRestarting = false;
+                isCasting = false;
+                character->reset();
+                generateItems();
+                std::random_device rd;
+                std::mt19937 gen(rd());
+                std::uniform_int_distribution<> aimDist(1550, 1660);
+                aim = aimDist(gen);
+                playedWinLoseSound = false;
+                if (movementSoundChannel != -1) {
+                    Mix_HaltChannel(movementSoundChannel);
+                    movementSoundChannel = -1;
+                }
+            }
+        }
         blinkTimer += 1.0f / 60.0f;
         if (blinkTimer >= 0.5f) {
             showRestartText = !showRestartText;
             blinkTimer = 0.0f;
         }
     }
+}
+
+void Game::render() {
+    SDL_RenderClear(renderer);
+
+    if (currentState == MENU) {
+        SDL_RenderCopy(renderer, bgTexture, nullptr, nullptr);
+        SDL_RenderCopy(renderer, isButtonPlay ? buttonPlayTexture : buttonStartTexture, nullptr, &buttonRect);
+    } else if (currentState == PLAYING) {
+        SDL_RenderCopy(renderer, bgGameTexture, nullptr, nullptr);
+        for (const auto& item : items) {
+            item->render(renderer);
+        }
+        Item* caughtItem = character->getCaughtItem();
+        if (caughtItem) {
+            caughtItem->render(renderer);
+        }
+        character->render(renderer);
+
+        if (isExploding) {
+            SDL_Rect srcRect = { explosionFrame * 72, 0, 72, 88 };
+            SDL_Rect dstRect = { explosionPosition.x - 40, explosionPosition.y - 44, 80, 88 };
+            SDL_RenderCopy(renderer, explosionTexture, &srcRect, &dstRect);
+        }
+
+        SDL_Color white = { 255, 255, 255, 255 };
+        std::stringstream aimText;
+        aimText << "aim: " << aim;
+        renderText(aimText.str(), 10, 10, white);
+        std::stringstream scoreText;
+        scoreText << "score: " << score;
+        renderText(scoreText.str(), 10, 40, white);
+
+        std::stringstream timeText;
+        timeText << "time: " << static_cast<int>(timeLeft) << "s";
+        int textWidth = 100;
+        renderText(timeText.str(), 1200 - textWidth - 10, 10, white);
+    } else if (currentState == GAME_OVER) {
+        SDL_RenderCopy(renderer, bgGameTexture, nullptr, nullptr);
+        SDL_Color color = hasWon ? SDL_Color{ 255, 0, 0, 255 } : SDL_Color{ 139, 69, 19, 255 };
+        std::string resultText = hasWon ? "YOU WIN" : "YOU LOSE";
+        renderText(resultText, 0, 250, color, true);
+        if (showRestartText && !isRestarting) {
+            SDL_Color white = { 255, 255, 255, 255 };
+            renderText("Please press SPACE to restart", 0, 300, white, true);
+        }
+        if (isRestarting) {
+            SDL_Color white = { 255, 255, 255, 255 };
+            std::stringstream restartText;
+            restartText << "Restarting in " << static_cast<int>(std::ceil(restartTimer)) << "s";
+            renderText(restartText.str(), 0, 350, white, true);
+        }
+    }
+
+    SDL_RenderPresent(renderer);
 }
 
 void Game::renderText(const std::string& text, int x, int y, SDL_Color color, bool centered) {
@@ -419,55 +590,6 @@ void Game::renderText(const std::string& text, int x, int y, SDL_Color color, bo
     SDL_DestroyTexture(texture);
 }
 
-void Game::render() {
-    SDL_RenderClear(renderer);
-
-    if (currentState == MENU) {
-        SDL_RenderCopy(renderer, bgTexture, nullptr, nullptr);
-        SDL_RenderCopy(renderer, isButtonPlay ? buttonPlayTexture : buttonStartTexture, nullptr, &buttonRect);
-    } else if (currentState == PLAYING) {
-        SDL_RenderCopy(renderer, bgGameTexture, nullptr, nullptr);
-        for (const auto& item : items) {
-            item->render(renderer);
-        }
-        Item* caughtItem = character->getCaughtItem();
-        if (caughtItem) {
-            caughtItem->render(renderer);
-        }
-        character->render(renderer);
-
-        if (isExploding) {
-            SDL_Rect srcRect = { explosionFrame * (512 / EXPLOSION_FRAMES), 0, 512 / EXPLOSION_FRAMES, 512 / EXPLOSION_FRAMES };
-            SDL_Rect dstRect = { explosionPosition.x - 50, explosionPosition.y - 50, 100, 100 }; // Hiệu ứng nổ tại vị trí bom
-            SDL_RenderCopy(renderer, explosionTexture, &srcRect, &dstRect);
-        }
-
-        SDL_Color white = { 255, 255, 255, 255 };
-        std::stringstream aimText;
-        aimText << "aim: " << aim;
-        renderText(aimText.str(), 10, 10, white);
-        std::stringstream scoreText;
-        scoreText << "score: " << score;
-        renderText(scoreText.str(), 10, 40, white);
-
-        std::stringstream timeText;
-        timeText << "time: " << static_cast<int>(timeLeft) << "s";
-        int textWidth = 100;
-        renderText(timeText.str(), 1200 - textWidth - 10, 10, white);
-    } else if (currentState == GAME_OVER) {
-        SDL_RenderCopy(renderer, bgGameTexture, nullptr, nullptr);
-        SDL_Color color = hasWon ? SDL_Color{ 255, 0, 0, 255 } : SDL_Color{ 139, 69, 19, 255 };
-        std::string resultText = hasWon ? "YOU WIN" : "YOU LOSE";
-        renderText(resultText, 0, 250, color, true);
-        if (showRestartText) {
-            SDL_Color white = { 255, 255, 255, 255 };
-            renderText("Please press SPACE to restart", 0, 300, white, true);
-        }
-    }
-
-    SDL_RenderPresent(renderer);
-}
-
 void Game::cleanup() {
     for (auto item : items) {
         delete item;
@@ -481,9 +603,18 @@ void Game::cleanup() {
     if (bgGameTexture) SDL_DestroyTexture(bgGameTexture);
     if (bgTexture) SDL_DestroyTexture(bgTexture);
     if (explosionTexture) SDL_DestroyTexture(explosionTexture);
+    if (winSound) Mix_FreeChunk(winSound);
+    if (loseSound) Mix_FreeChunk(loseSound);
+    if (bombSound) Mix_FreeChunk(bombSound);
+    if (goldSound) Mix_FreeChunk(goldSound);
+    if (spaceClickSound) Mix_FreeChunk(spaceClickSound);
+    if (movementSoundChannel != -1) {
+        Mix_HaltChannel(movementSoundChannel);
+    }
     if (font) TTF_CloseFont(font);
     if (renderer) SDL_DestroyRenderer(renderer);
     if (window) SDL_DestroyWindow(window);
+    Mix_CloseAudio();
     IMG_Quit();
     TTF_Quit();
     SDL_Quit();

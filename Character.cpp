@@ -7,10 +7,14 @@ Character::Character(SDL_Renderer* renderer)
     : texture(nullptr), speed(1), rodAngle(0), angleSpeed(1.0), angleDirection(true),
       isLineExtended(false), lineCurrentLength(0), lineTargetLength(0), lineDropSpeed(300),
       linePullTime(0), linePullDuration(0), isPullingUp(false), hasCaughtItemFlag(false),
-      caughtItem(nullptr), isCaught(false) {
-    rect = { 0, 225, 75, 75 };
-    rod = { rect.x + rect.w / 2, rect.y + rect.h / 2, 20, 40 };
+      caughtItem(nullptr), isCaught(false), currentFrame(0), isMoving(false), animationTimer(0.0f) {
+    rect = { 0, 225, 75, 75 }; // Kích thước giữ nguyên
+    rod = { rect.x + rect.w / 2, rect.y + rect.h / 2 + 10, 20, 40 }; // Dịch cần câu xuống 10 pixel
     hook = { rect.x + rect.w / 2, rect.y + rect.h / 2 + 40 };
+    // Tải sprite mới
+    if (!loadTexture("players.png", renderer)) {
+        std::cerr << "Không thể tải players.png trong constructor" << std::endl;
+    }
 }
 
 Character::~Character() {
@@ -35,6 +39,21 @@ bool Character::loadTexture(const char* filePath, SDL_Renderer* renderer) {
 }
 
 void Character::update(int dx) {
+    // Cập nhật trạng thái di chuyển
+    isMoving = (dx != 0);
+
+    // Cập nhật hoạt ảnh
+    if (isMoving && !isLineExtended) {
+        animationTimer += 1.0f / 60.0f; // Tăng thời gian mỗi khung hình (60 FPS)
+        if (animationTimer >= FRAME_TIME) {
+            currentFrame = (currentFrame + 1) % 3 + 1; // Vòng lặp frame 2-4 (1, 2, 3)
+            animationTimer -= FRAME_TIME;
+        }
+    } else {
+        currentFrame = 0; // Frame 1 khi đứng yên
+        animationTimer = 0.0f;
+    }
+
     if (!isLineExtended) {
         rect.x += dx * speed;
         if (rect.x < MOVE_AREA_LEFT) {
@@ -51,7 +70,7 @@ void Character::update(int dx) {
     }
 
     rod.x = rect.x + rect.w / 2;
-    rod.y = rect.y + rect.h / 2;
+    rod.y = rect.y + rect.h / 2 + 10; // Dịch cần câu xuống 10 pixel
 
     if (!isLineExtended) {
         if (angleDirection) {
@@ -78,7 +97,7 @@ void Character::update(int dx) {
     if (caughtItem) {
         ItemType type = caughtItem->getType();
         if (type == BIG_GOLD) {
-            pullSpeed /= 2.5; // Chậm gấp 2.5 lần
+            pullSpeed /= 2.0; // Chậm gấp 2 lần
         } else if (type == GOLD) {
             pullSpeed /= 1.5; // Chậm gấp 1.5 lần
         }
@@ -133,60 +152,11 @@ void Character::update(int dx) {
     }
 }
 
-void Character::castLine(bool isCasting) {
-    double rad = rodAngle * M_PI / 180.0;
-    int rodEndX = rod.x + static_cast<int>(rod.h * sin(rad));
-    int rodEndY = rod.y + static_cast<int>(rod.h * cos(rad));
-
-    if (isCasting && !isLineExtended && !isPullingUp && rodEndY <= MOVE_AREA_BOTTOM) {
-        isLineExtended = true;
-        lineCurrentLength = rod.h;
-        linePullTime = 0;
-        isPullingUp = false;
-
-        int itemPoints = 10;
-        linePullDuration = itemPoints * 0.1 * (2.0 / 3.0);
-        if (linePullDuration < 0.5 * (2.0 / 3.0)) {
-            linePullDuration = 0.5 * (2.0 / 3.0);
-        }
-    } else if (!isCasting && isLineExtended && !isPullingUp) {
-        isPullingUp = true;
-    }
-}
-
-SDL_Point Character::getHookPosition() {
-    return hook;
-}
-
-bool Character::hasCaughtItem() const {
-    return hasCaughtItemFlag;
-}
-
-void Character::catchItem() {
-    hasCaughtItemFlag = true;
-}
-
-void Character::resetCatch() {
-    hasCaughtItemFlag = false;
-}
-
-void Character::setCaughtItem(Item* item) {
-    caughtItem = item;
-    isCaught = true;
-    isPullingUp = true;
-}
-
-Item* Character::getCaughtItem() const {
-    return caughtItem;
-}
-
-bool Character::isItemCaught() const {
-    return isCaught;
-}
-
 void Character::render(SDL_Renderer* renderer) {
     if (texture) {
-        SDL_RenderCopy(renderer, texture, nullptr, &rect);
+        // Chọn frame từ sprite sheet
+        SDL_Rect srcRect = { currentFrame * 32, 0, 32, 32 }; // Mỗi frame 32x32
+        SDL_RenderCopy(renderer, texture, &srcRect, &rect); // Vẽ với kích thước 75x75
     }
 
     SDL_SetRenderDrawColor(renderer, 139, 69, 19, 255);
@@ -251,4 +221,79 @@ void Character::render(SDL_Renderer* renderer) {
     }
 
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+}
+
+void Character::castLine(bool isCasting) {
+    double rad = rodAngle * M_PI / 180.0;
+    int rodEndX = rod.x + static_cast<int>(rod.h * sin(rad));
+    int rodEndY = rod.y + static_cast<int>(rod.h * cos(rad));
+
+    if (isCasting && !isLineExtended && !isPullingUp && rodEndY <= MOVE_AREA_BOTTOM) {
+        isLineExtended = true;
+        lineCurrentLength = rod.h;
+        linePullTime = 0;
+        isPullingUp = false;
+
+        int itemPoints = 10;
+        linePullDuration = itemPoints * 0.1 * (2.0 / 3.0);
+        if (linePullDuration < 0.5 * (2.0 / 3.0)) {
+            linePullDuration = 0.5 * (2.0 / 3.0);
+        }
+    } else if (!isCasting && isLineExtended && !isPullingUp) {
+        isPullingUp = true;
+    }
+}
+
+SDL_Point Character::getHookPosition() {
+    return hook;
+}
+
+bool Character::hasCaughtItem() const {
+    return hasCaughtItemFlag;
+}
+
+void Character::catchItem() {
+    hasCaughtItemFlag = true;
+}
+
+void Character::resetCatch() {
+    hasCaughtItemFlag = false;
+}
+
+void Character::setCaughtItem(Item* item) {
+    caughtItem = item;
+    isCaught = true;
+    isPullingUp = true;
+}
+
+Item* Character::getCaughtItem() const {
+    return caughtItem;
+}
+
+bool Character::isItemCaught() const {
+    return isCaught;
+}
+
+void Character::reset() {
+    // Reset to initial state (same as constructor)
+    speed = 1;
+    rodAngle = 0;
+    angleSpeed = 1.0;
+    angleDirection = true;
+    isLineExtended = false;
+    lineCurrentLength = rod.h;
+    lineTargetLength = 0;
+    lineDropSpeed = 300;
+    linePullTime = 0;
+    linePullDuration = 0;
+    isPullingUp = false;
+    hasCaughtItemFlag = false;
+    caughtItem = nullptr;
+    isCaught = false;
+    currentFrame = 0;
+    isMoving = false;
+    animationTimer = 0.0f;
+    rect = { 0, 225, 75, 75 };
+    rod = { rect.x + rect.w / 2, rect.y + rect.h / 2 + 10, 20, 40 };
+    hook = { rect.x + rect.w / 2, rect.y + rect.h / 2 + 40 };
 }
